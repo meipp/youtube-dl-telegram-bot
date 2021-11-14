@@ -33,21 +33,15 @@ def mp3(update, context):
     # TODO split(...)[1]
     query = update.message.text.split(' ')[1]
 
-    if re.match(r'^https?://(www|m)\.youtube\.com/watch\?\S*$', query):
-        context.bot.send_message(chat_id=update.effective_chat.id, text='Downloading...')
-        os.system('youtube-dl --extract-audio --audio-format mp3 --output "./downloads/%(title)s.%(ext)s" ' + query)
-    else:
-        context.bot.send_message(chat_id=update.effective_chat.id, text='Sorry, invalid url')
+    context.bot.send_message(chat_id=update.effective_chat.id, text='Downloading...')
+    os.system('youtube-dl --extract-audio --audio-format mp3 --output "./downloads/%(title)s.%(ext)s" ' + query)
 
 def mp4(update, context):
     # TODO split(...)[1]
     query = update.message.text.split(' ')[1]
 
-    if re.match(r'^https?://(www|m)\.youtube\.com/watch\?\S*$', query):
-        context.bot.send_message(chat_id=update.effective_chat.id, text='Downloading...')
-        os.system('youtube-dl --format mp4 --output "./downloads/%(title)s.%(ext)s" ' + query)
-    else:
-        context.bot.send_message(chat_id=update.effective_chat.id, text='Sorry, invalid url')
+    context.bot.send_message(chat_id=update.effective_chat.id, text='Downloading...')
+    os.system('youtube-dl --format mp4 --output "./downloads/%(title)s.%(ext)s" ' + query)
 
 def select_file(update, context):
     downloads = sorted(os.listdir('./downloads'))
