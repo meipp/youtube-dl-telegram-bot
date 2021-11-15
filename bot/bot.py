@@ -106,10 +106,10 @@ def message(update, context):
         except DownloadError as e:
             send(chat_id, context, text=str(e))
 
-    media_videos = [InputMediaVideo(open('./downloads/' + x['title'].replace('/', '_') + '.' + result['ext'], 'rb'), thumb=open('./downloads/' + x['title'].replace('/', '_') + '.jpg', 'rb')) for x in all_results]
+    media_videos = [InputMediaVideo(open('./downloads/' + x['title'].replace('/', '_') + '.' + result['ext'], 'rb'), thumb=open('./downloads/' + x['title'].replace('/', '_') + '.jpg', 'rb'), caption=x['title']) for x in all_results]
     context.bot.send_media_group(chat_id=chat_id, media=media_videos)
 
-    media_audios = [InputMediaAudio(open('./downloads/' + x['title'].replace('/', '_') + '.mp3', 'rb'), thumb=open('./downloads/' + x['title'].replace('/', '_') + '.jpg', 'rb')) for x in all_results]
+    media_audios = [InputMediaAudio(open('./downloads/' + x['title'].replace('/', '_') + '.mp3', 'rb'), thumb=open('./downloads/' + x['title'].replace('/', '_') + '.jpg', 'rb'), caption=x['title']) for x in all_results]
     context.bot.send_media_group(chat_id=chat_id, media=media_audios)
 
 dispatcher.add_handler(CallbackQueryHandler(callback_query))
