@@ -10,6 +10,20 @@ logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s
 updater = Updater(token=os.environ['TOKEN'])
 dispatcher = updater.dispatcher
 
+def send(chat_id, context, text=None, photo=None, disable_notification=True):
+    if text is not None and photo is None:
+        context.bot.send_message(chat_id=chat_id, text=text, disable_notification=disable_notification)
+
+    if photo is not None and not photo.lower().endswith('.webp'):
+        # photo exists and is not a sticker
+        context.bot.send_photo(chat_id=chat_id, photo=photo, caption=text, disable_notification=disable_notification)
+    if photo is not None and photo.lower().endswith('.webp'):
+        # .webp images must be sent with send_stickers
+        # additionally, stickers cannot have a caption, so text must be sent separately
+        context.bot.send_sticker(chat_id=chat_id, sticker=photo, disable_notification=disable_notification)
+        if text is not None:
+            context.bot.send_message(chat_id=chat_id, text=text, disable_notification=disable_notification)
+
 def keyboard(buttons):
     return InlineKeyboardMarkup([
         [InlineKeyboardButton(label, callback_data=str(i))] for i, label in enumerate(buttons)]
