@@ -160,6 +160,9 @@ class TelegramProgressLogger:
                 lines.append(headline)
         lines.append('')
 
+        lines += self.lines
+        lines.append('')
+
         # Subtask progress
         for i, subtask in enumerate(self.subtasks):
             line = self.subtask_progresses[i] + ' ' + subtask
@@ -167,9 +170,6 @@ class TelegramProgressLogger:
                 lines.append('<b>' + line + '</b>')
             else:
                 lines.append(line)
-
-        lines.append('')
-        lines += self.lines
 
         msg = '\n'.join(lines)
         m = self.progress_message
