@@ -40,20 +40,9 @@ def keyboard(buttons):
 def callback_query(update, context):
     query = update.callback_query.data
     update.callback_query.answer()
-    downloads = sorted(os.listdir('./downloads'))
-    selection = downloads[int(query)]
-    context.bot.send_message(chat_id=update.effective_chat.id, text='Uploading \'' + selection + '\'...')
-
-    files = {'document': open('./downloads/' + selection, 'rb')}
-    resp = requests.post('https://api.telegram.org/bot' + os.environ['TOKEN'] + '/sendDocument?chat_id=' + str(update.effective_chat.id), files=files)
-    print(resp.status_code)
-    print(resp.content)
+    context.bot.send_message(chat_id=update.effective_chat.id, text='You pressed option ' + query)
 
 # TODO correct download location with -o flag
-
-def select_file(update, context):
-    downloads = sorted(os.listdir('./downloads'))
-    context.bot.send_message(chat_id=update.effective_chat.id, text='Select a file to download', reply_markup=keyboard(downloads))
 
 def message(update, context):
     chat_id = update.effective_chat.id
@@ -123,7 +112,6 @@ def message(update, context):
     media_audios = [InputMediaAudio(open('./downloads/' + x['title'].replace('/', '_') + '.mp3', 'rb'), thumb=open('./downloads/' + x['title'].replace('/', '_') + '.jpg', 'rb')) for x in all_results]
     context.bot.send_media_group(chat_id=chat_id, media=media_audios)
 
-dispatcher.add_handler(CommandHandler('select_file', select_file))
 dispatcher.add_handler(CallbackQueryHandler(callback_query))
 dispatcher.add_handler(MessageHandler(Filters.text & ~Filters.command, message))
 
