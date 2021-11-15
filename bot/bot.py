@@ -59,19 +59,18 @@ class TelegramProgressLogger:
         self.last_message_timestamp = 0
 
     def debug(self, msg):
+        print(msg)
         self.edit_progress_message(msg, drop_message=True)
 
     def warning(self, msg):
         print(msg)
-        send(self.chat_id, self.context, text=msg)
+        self.edit_progress_message(msg, drop_message=False)
 
     def error(self, msg):
         print(msg)
-        send(self.chat_id, self.context, text=msg)
+        self.edit_progress_message(msg, drop_message=False)
 
     def edit_progress_message(self, msg, drop_message=False):
-        print(msg)
-
         # Catch download progress
         m = re.search(r'\[download\]\s+(\d+(\.\d+)?%)', msg)
         if m:
