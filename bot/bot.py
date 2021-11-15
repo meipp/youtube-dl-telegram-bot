@@ -51,13 +51,6 @@ def callback_query(update, context):
 
 # TODO correct download location with -o flag
 
-def mp3(update, context):
-    # TODO split(...)[1]
-    query = update.message.text.split(' ')[1]
-
-    context.bot.send_message(chat_id=update.effective_chat.id, text='Downloading...')
-    os.system('youtube-dl --extract-audio --audio-format mp3 --output "./downloads/%(title)s.%(ext)s" ' + query)
-
 def mp4(update, context):
     # TODO split(...)[1]
     query = update.message.text.split(' ')[1]
@@ -137,7 +130,6 @@ def message(update, context):
     media_audios = [InputMediaAudio(open('./downloads/' + x['title'].replace('/', '_') + '.mp3', 'rb'), thumb=open('./downloads/' + x['title'].replace('/', '_') + '.jpg', 'rb')) for x in all_results]
     context.bot.send_media_group(chat_id=chat_id, media=media_audios)
 
-dispatcher.add_handler(CommandHandler('mp3', mp3))
 dispatcher.add_handler(CommandHandler('mp4', mp4))
 dispatcher.add_handler(CommandHandler('select_file', select_file))
 dispatcher.add_handler(CallbackQueryHandler(callback_query))
