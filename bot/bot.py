@@ -1,5 +1,6 @@
 import os
 import re
+import time
 import subprocess
 import urllib
 import logging
@@ -45,14 +46,17 @@ def callback_query(update, context):
 # TODO correct download location with -o flag
 
 class TelegramProgressLogger:
-    def __init__(self, chat_id, context, headline):
+    def __init__(self, chat_id, context, headlines, bold_headlines=[]):
         self.chat_id = chat_id
         self.context = context
-        self.lines = [headline, '']
-        self.progress_message = context.bot.send_message(chat_id=chat_id, text='\n'.join(self.lines))
+        self.headlines = headlines
+        self.bold_headlines = bold_headlines
+        self.lines = []
+        self.last_message_timestamp = 0
+        self.progress_message = context.bot.send_message(chat_id=chat_id, text='Progress placeholder')
 
     def debug(self, msg):
-        self.edit_progress_message(msg)
+        self.edit_progress_message(msg, drop_message=True)
 
     def warning(self, msg):
         print(msg)
@@ -62,9 +66,8 @@ class TelegramProgressLogger:
         print(msg)
         send(self.chat_id, self.context, text=msg)
 
-    def edit_progress_message(self, msg):
+    def edit_progress_message(self, msg, drop_message=False):
         print(msg)
-        m = self.progress_message
         # if msg starts with the magic sequence, the logger wants to overwrite the last line rather than append a new line
         magic_sequence = '\r\x1b[K'
         if msg.startswith(magic_sequence):
@@ -72,12 +75,40 @@ class TelegramProgressLogger:
             self.lines = self.lines[:-1] + [msg[len(magic_sequence):]]
         else:
             self.lines += [msg]
-        msg = '\n'.join(self.lines)
+        self.update_message(drop_message=drop_message)
 
+    def update_message(self, drop_message=False):
+        lines = []
+        for i, headline in enumerate(self.headlines):
+            if i in self.bold_headlines:
+                lines.append('<b>' + headline + '</b>')
+            else:
+                lines.append(headline)
+        lines.append('')
+        lines += self.lines
+
+        msg = '\n'.join(lines)
+        m = self.progress_message
         if m['text'] != msg:
             # New message
             # If the old message and the edited message are identical, telegram rejects the edit
+
+            if drop_message and time.time() - self.last_message_timestamp < 2:
+                # If a message has been sent in the last two seconds, drop this message
+                # This measure is necessary so that the bot does exceed telegram's message limit
+                return
+
             self.progress_message = self.context.bot.edit_message_text(chat_id=self.chat_id, message_id=m['message_id'], text=msg, parse_mode='html')
+            self.last_message_timestamp = time.time()
+
+    def set_headlines(self, headlines, bold_headlines=[]):
+        self.headlines = headlines
+        self.bold_headlines = bold_headlines
+        self.update_message()
+
+    def set_bold_headlines(self, bold_headlines):
+        self.bold_headlines = bold_headlines
+        self.update_message()
 
 def message(update, context):
     chat_id = update.effective_chat.id
@@ -88,6 +119,7 @@ def message(update, context):
     playlist_title = None
     playlist_thumbnail = None
 
+    progress_logger = TelegramProgressLogger(chat_id, context, headlines=['<b>Progress</b>'], bold_headlines=[0])
     ydl = youtube_dl.YoutubeDL({
         'outtmpl': './downloads/%(title)s.%(ext)s',
         'no_color': True,
@@ -97,7 +129,7 @@ def message(update, context):
             'key': 'FFmpegExtractAudio',
             'preferredcodec': 'mp3'
         }],
-        'logger': TelegramProgressLogger(chat_id, context, '<b>Progress</b>')
+        'logger': progress_logger
     })
     for url in query:
         try:
@@ -125,10 +157,10 @@ def message(update, context):
 
     if playlist_title is not None:
         message = 'The playlist \'' + playlist_title + '\' will be downloaded:\n\n' + '\n'.join([x['title'] for x in all_results])
-        send(chat_id, context, text=message, photo=playlist_thumbnail)
+        progress_logger.set_headlines(message.split('\n'), [0])
     else:
         message = 'The following videos will be downloaded:\n\n' + '\n'.join([x['title'] for x in all_results])
-        send(chat_id, context, text=message, photo=playlist_thumbnail)
+        progress_logger.set_headlines(message.split('\n'), [0])
 
     for result in all_results:
         try:
