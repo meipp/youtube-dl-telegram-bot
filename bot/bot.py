@@ -44,6 +44,41 @@ def callback_query(update, context):
 
 # TODO correct download location with -o flag
 
+class TelegramProgressLogger:
+    def __init__(self, chat_id, context, headline):
+        self.chat_id = chat_id
+        self.context = context
+        self.lines = [headline, '']
+        self.progress_message = context.bot.send_message(chat_id=chat_id, text='\n'.join(self.lines))
+
+    def debug(self, msg):
+        self.edit_progress_message(msg)
+
+    def warning(self, msg):
+        print(msg)
+        send(self.chat_id, self.context, text=msg)
+
+    def error(self, msg):
+        print(msg)
+        send(self.chat_id, self.context, text=msg)
+
+    def edit_progress_message(self, msg):
+        print(msg)
+        m = self.progress_message
+        # if msg starts with the magic sequence, the logger wants to overwrite the last line rather than append a new line
+        magic_sequence = '\r\x1b[K'
+        if msg.startswith(magic_sequence):
+            # overwrite last line with message (and delete the magic sequence from beginning of the message)
+            self.lines = self.lines[:-1] + [msg[len(magic_sequence):]]
+        else:
+            self.lines += [msg]
+        msg = '\n'.join(self.lines)
+
+        if m['text'] != msg:
+            # New message
+            # If the old message and the edited message are identical, telegram rejects the edit
+            self.progress_message = self.context.bot.edit_message_text(chat_id=self.chat_id, message_id=m['message_id'], text=msg, parse_mode='html')
+
 def message(update, context):
     chat_id = update.effective_chat.id
     query = re.split(r'\s+', update.message.text)
@@ -61,7 +96,8 @@ def message(update, context):
         'postprocessors': [{
             'key': 'FFmpegExtractAudio',
             'preferredcodec': 'mp3'
-        }]
+        }],
+        'logger': TelegramProgressLogger(chat_id, context, '<b>Progress</b>')
     })
     for url in query:
         try:
