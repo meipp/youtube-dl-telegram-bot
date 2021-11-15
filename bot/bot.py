@@ -39,10 +39,74 @@ def keyboard(buttons):
         [InlineKeyboardButton(label, callback_data=str(i))] for i, label in enumerate(buttons)]
     )
 
+def download(update, context, task, format, merge='separately'):
+    chat_id = update.effective_chat.id
+    context.bot.send_message(chat_id=chat_id, text=format+' '+merge)
+
+    playlist_title = task['playlist_title']
+    playlist_thumbnail = task['playlist_thumbnail']
+    all_results = task['all_results']
+
+    progress_logger = TelegramProgressLogger(chat_id, context, headlines=['<b>Progress</b>'], bold_headlines=[0])
+    ydl = youtube_dl.YoutubeDL({
+        'outtmpl': './downloads/%(title)s.%(ext)s',
+        'no_color': True,
+        'format': 'worst',
+        'keepvideo': True,
+        'postprocessors': [{
+            'key': 'FFmpegExtractAudio',
+            'preferredcodec': 'mp3'
+        }],
+        'logger': progress_logger
+    })
+
+    if playlist_title is not None:
+        message = 'The playlist \'' + playlist_title + '\' will be downloaded:'
+        progress_logger.set_headlines(message.split('\n'), [0])
+        progress_logger.set_subtasks([x['title'] for x in all_results])
+    else:
+        message = 'The following videos will be downloaded:'
+        progress_logger.set_headlines(message.split('\n'), [0])
+        progress_logger.set_subtasks([x['title'] for x in all_results])
+
+    for i, result in enumerate(all_results):
+        try:
+            progress_logger.set_current_subtask(i)
+            status = ydl.download([result['webpage_url']])
+            if status != 0:
+                raise DownloadError('Unknown error while downloading ' + result['webpage_url'])
+
+            thumbnail_path = './downloads/' + result['title'].replace('/', '_') + '.jpg'
+            urllib.request.urlretrieve(select_thumbnail(result['thumbnails']), thumbnail_path)
+            subprocess.call(['mogrify', '-format', 'jpg', thumbnail_path])
+        except DownloadError as e:
+            send(chat_id, context, text=str(e))
+    progress_logger.set_current_subtask(-1)
+
+    if format == 'video':
+        media_videos = [InputMediaVideo(open('./downloads/' + x['title'].replace('/', '_') + '.' + result['ext'], 'rb'), thumb=open('./downloads/' + x['title'].replace('/', '_') + '.jpg', 'rb'), caption=x['title']) for x in all_results]
+        context.bot.send_media_group(chat_id=chat_id, media=media_videos)
+    if format == 'audio':
+        media_audios = [InputMediaAudio(open('./downloads/' + x['title'].replace('/', '_') + '.mp3', 'rb'), thumb=open('./downloads/' + x['title'].replace('/', '_') + '.jpg', 'rb'), caption=x['title']) for x in all_results]
+        context.bot.send_media_group(chat_id=chat_id, media=media_audios)
+
 def callback_query(update, context):
     query = update.callback_query.data
     update.callback_query.answer()
-    context.bot.send_message(chat_id=update.effective_chat.id, text='You pressed option ' + query)
+
+    args = query.split(' ')
+    if len(args) == 2 and args[0] in ['video', 'audio']:
+        task = context.chat_data['tasks'][args[1]]
+
+        if len(task['all_results']) >= 2:
+            # keyboard
+            context.bot.send_message(chat_id=update.effective_chat.id, text='Merge files into one or download separately?', reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('Merge', callback_data=args[0] + ' merge ' + args[1])], [InlineKeyboardButton('Separately', callback_data=args[0] + ' separately ' + args[1])]]))
+        else:
+            download(update, context, task, format=args[0])
+
+    if len(args) == 3 and args[0] in ['video', 'audio'] and args[1] in ['merge', 'separately']:
+        task = context.chat_data['tasks'][args[2]]
+        download(update, context, task, format=args[0], merge=args[1])
 
 # TODO correct download location with -o flag
 
@@ -191,34 +255,17 @@ def message(update, context):
         playlist_title = None
         playlist_thumbnail = None
 
-    if playlist_title is not None:
-        message = 'The playlist \'' + playlist_title + '\' will be downloaded:'
-        progress_logger.set_headlines(message.split('\n'), [0])
-        progress_logger.set_subtasks([x['title'] for x in all_results])
-    else:
-        message = 'The following videos will be downloaded:'
-        progress_logger.set_headlines(message.split('\n'), [0])
-        progress_logger.set_subtasks([x['title'] for x in all_results])
+    message_id = str(update.message.message_id)
+    if 'tasks' not in context.chat_data:
+        context.chat_data['tasks'] = {}
+    context.chat_data['tasks'][message_id] = {
+        'all_results': all_results,
+        'playlist_title': playlist_title,
+        'playlist_thumbnail': playlist_thumbnail
+    }
 
-    for i, result in enumerate(all_results):
-        try:
-            progress_logger.set_current_subtask(i)
-            status = ydl.download([result['webpage_url']])
-            if status != 0:
-                raise DownloadError('Unknown error while downloading ' + result['webpage_url'])
-
-            thumbnail_path = './downloads/' + result['title'].replace('/', '_') + '.jpg'
-            urllib.request.urlretrieve(select_thumbnail(result['thumbnails']), thumbnail_path)
-            subprocess.call(['mogrify', '-format', 'jpg', thumbnail_path])
-        except DownloadError as e:
-            send(chat_id, context, text=str(e))
-    progress_logger.set_current_subtask(-1)
-
-    media_videos = [InputMediaVideo(open('./downloads/' + x['title'].replace('/', '_') + '.' + result['ext'], 'rb'), thumb=open('./downloads/' + x['title'].replace('/', '_') + '.jpg', 'rb'), caption=x['title']) for x in all_results]
-    context.bot.send_media_group(chat_id=chat_id, media=media_videos)
-
-    media_audios = [InputMediaAudio(open('./downloads/' + x['title'].replace('/', '_') + '.mp3', 'rb'), thumb=open('./downloads/' + x['title'].replace('/', '_') + '.jpg', 'rb'), caption=x['title']) for x in all_results]
-    context.bot.send_media_group(chat_id=chat_id, media=media_audios)
+    # keyboard
+    context.bot.send_message(chat_id=update.effective_chat.id, text='Download video or audio?', reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('Video', callback_data='video ' + message_id)], [InlineKeyboardButton('Audio', callback_data='audio ' + message_id)]]))
 
 dispatcher.add_handler(CallbackQueryHandler(callback_query))
 dispatcher.add_handler(MessageHandler(Filters.text & ~Filters.command, message))
