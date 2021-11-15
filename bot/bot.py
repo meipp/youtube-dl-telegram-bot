@@ -5,6 +5,7 @@ import subprocess
 import urllib
 import logging
 import requests
+from telegram.error import BadRequest
 import youtube_dl
 from telegram import *
 from telegram.ext import *
@@ -49,11 +50,13 @@ class TelegramProgressLogger:
     def __init__(self, chat_id, context, headlines, bold_headlines=[]):
         self.chat_id = chat_id
         self.context = context
+        self.progress_message = context.bot.send_message(chat_id=chat_id, text='Progress placeholder')
+
         self.headlines = headlines
         self.bold_headlines = bold_headlines
         self.lines = []
+        self.set_subtasks([])
         self.last_message_timestamp = 0
-        self.progress_message = context.bot.send_message(chat_id=chat_id, text='Progress placeholder')
 
     def debug(self, msg):
         self.edit_progress_message(msg, drop_message=True)
@@ -68,6 +71,14 @@ class TelegramProgressLogger:
 
     def edit_progress_message(self, msg, drop_message=False):
         print(msg)
+
+        # Catch download progress
+        m = re.search(r'\[download\]\s+(\d+(\.\d+)?%)', msg)
+        if m:
+            progress = m.group(1)
+            self.set_subtask_progress(progress)
+            return
+
         # if msg starts with the magic sequence, the logger wants to overwrite the last line rather than append a new line
         magic_sequence = '\r\x1b[K'
         if msg.startswith(magic_sequence):
@@ -85,6 +96,16 @@ class TelegramProgressLogger:
             else:
                 lines.append(headline)
         lines.append('')
+
+        # Subtask progress
+        for i, subtask in enumerate(self.subtasks):
+            line = self.subtask_progresses[i] + ' ' + subtask
+            if i == self.current_subtask_index:
+                lines.append('<b>' + line + '</b>')
+            else:
+                lines.append(line)
+
+        lines.append('')
         lines += self.lines
 
         msg = '\n'.join(lines)
@@ -98,8 +119,11 @@ class TelegramProgressLogger:
                 # This measure is necessary so that the bot does exceed telegram's message limit
                 return
 
-            self.progress_message = self.context.bot.edit_message_text(chat_id=self.chat_id, message_id=m['message_id'], text=msg, parse_mode='html')
-            self.last_message_timestamp = time.time()
+            try:
+                self.progress_message = self.context.bot.edit_message_text(chat_id=self.chat_id, message_id=m['message_id'], text=msg, parse_mode='html')
+                self.last_message_timestamp = time.time()
+            except BadRequest as e:
+                print(e)
 
     def set_headlines(self, headlines, bold_headlines=[]):
         self.headlines = headlines
@@ -108,6 +132,19 @@ class TelegramProgressLogger:
 
     def set_bold_headlines(self, bold_headlines):
         self.bold_headlines = bold_headlines
+        self.update_message()
+
+    def set_subtasks(self, subtasks):
+        self.subtasks = subtasks
+        self.subtask_progresses = ['0%' for _ in subtasks]
+        self.set_current_subtask(0)
+
+    def set_current_subtask(self, current_subtask_index):
+        self.current_subtask_index = current_subtask_index
+        self.update_message()
+
+    def set_subtask_progress(self, subtask_progress):
+        self.subtask_progresses[self.current_subtask_index] = subtask_progress
         self.update_message()
 
 def message(update, context):
@@ -156,14 +193,17 @@ def message(update, context):
         playlist_thumbnail = None
 
     if playlist_title is not None:
-        message = 'The playlist \'' + playlist_title + '\' will be downloaded:\n\n' + '\n'.join([x['title'] for x in all_results])
+        message = 'The playlist \'' + playlist_title + '\' will be downloaded:'
         progress_logger.set_headlines(message.split('\n'), [0])
+        progress_logger.set_subtasks([x['title'] for x in all_results])
     else:
-        message = 'The following videos will be downloaded:\n\n' + '\n'.join([x['title'] for x in all_results])
+        message = 'The following videos will be downloaded:'
         progress_logger.set_headlines(message.split('\n'), [0])
+        progress_logger.set_subtasks([x['title'] for x in all_results])
 
-    for result in all_results:
+    for i, result in enumerate(all_results):
         try:
+            progress_logger.set_current_subtask(i)
             status = ydl.download([result['webpage_url']])
             if status != 0:
                 raise DownloadError('Unknown error while downloading ' + result['webpage_url'])
@@ -173,6 +213,7 @@ def message(update, context):
             subprocess.call(['mogrify', '-format', 'jpg', thumbnail_path])
         except DownloadError as e:
             send(chat_id, context, text=str(e))
+    progress_logger.set_current_subtask(-1)
 
     media_videos = [InputMediaVideo(open('./downloads/' + x['title'].replace('/', '_') + '.' + result['ext'], 'rb'), thumb=open('./downloads/' + x['title'].replace('/', '_') + '.jpg', 'rb'), caption=x['title']) for x in all_results]
     context.bot.send_media_group(chat_id=chat_id, media=media_videos)
